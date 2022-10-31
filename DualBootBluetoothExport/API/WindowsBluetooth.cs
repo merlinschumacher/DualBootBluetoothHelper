@@ -7,14 +7,14 @@ namespace DualBootBluetoothHelper.API
     public class WindowsBluetooth
     {
 
-        private readonly string _bluetoothInterfaceClassGuidAQS = "System.Devices.InterfaceClassGuid:=\"{92383B0E-F90E-4AC9-8D44-8C2D0D0EBDA2}\""
+        private readonly string _bluetoothInterfaceClassGuidAQS = "System.Devices.InterfaceClassGuid:=\"{92383B0E-F90E-4AC9-8D44-8C2D0D0EBDA2}\"";
         public WindowsBluetooth()
         {
         }
 
         public async Task<List<DBBHBluetoothAdapter>> ListBluetoothAdapters()
         {
-            DeviceInformationCollection bluetoothAdaptersDeviceInfo = await DeviceInformation.FindAllAsync();
+            DeviceInformationCollection bluetoothAdaptersDeviceInfo = await DeviceInformation.FindAllAsync(_bluetoothInterfaceClassGuidAQS);
 
             var bluetoothAdapters = new List<DBBHBluetoothAdapter>();
 
@@ -30,18 +30,19 @@ namespace DualBootBluetoothHelper.API
         }
         public async Task<List<DBBHBluetoothDevice>> ListBluetoothDevices()
         {
-            List<DBBHBluetoothDevice> devices = new();
+            List<DBBHBluetoothDevice> bluetoothDevices = new();
             //Paired bluetooth devices
-            DeviceInformationCollection PairedBluetoothDevices = await
+            DeviceInformationCollection bluetoothDevicesInfo = await
                    DeviceInformation.FindAllAsync(BluetoothDevice.GetDeviceSelector());
 
-            foreach (var dev in PairedBluetoothDevices)
+            foreach (var bluetoothDeviceInfo in bluetoothDevicesInfo)
             {
+                var bluetoothDeviceInstance = await BluetoothDevice.FromIdAsync(bluetoothDeviceInfo.Id);
+                bluetoothDevices.Add(new DBBHBluetoothDevice(bluetoothDeviceInfo.Name, bluetoothDeviceInstance.BluetoothAddress));
 
-                devices.Add(new DBBHBluetoothDevice(dev.Name, null));
             }
 
-            return devices;
+            return bluetoothDevices;
 
         }
     }
