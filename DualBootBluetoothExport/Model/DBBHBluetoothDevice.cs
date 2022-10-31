@@ -14,6 +14,11 @@ namespace DualBootBluetoothHelper.Model
             Name = name;
             Address = address;
         }
+        public DBBHBluetoothDevice(string name, ulong address)
+        {
+            Name = name;
+            Address = BitConverter.GetBytes(address).Reverse().SkipWhile(x => x == 0).ToArray();
+        }
 
         public string Name { get; set; }
 
