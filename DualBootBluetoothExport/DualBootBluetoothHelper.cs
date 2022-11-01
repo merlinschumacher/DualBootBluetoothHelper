@@ -2,6 +2,7 @@
 
 
 using DualBootBluetoothHelper.API;
+using DualBootBluetoothHelper.Helper;
 using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices;
 
@@ -20,6 +21,7 @@ using var loggerFactory = LoggerFactory.Create(builder =>
 ILogger logger = loggerFactory.CreateLogger<Program>();
 logger.LogInformation("DualBootBluetoothHelper - This tool imports and exports bluetooth configurations.");
 
+RequireAdministratorHelper.RequireAdministrator();
 
 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 {
@@ -35,3 +37,5 @@ if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
     foreach (var device in windowsBluetoothDevices)
         logger.LogInformation(device.ToString());
 }
+
+
