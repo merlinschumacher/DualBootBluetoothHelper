@@ -15,7 +15,8 @@ using var loggerFactory = LoggerFactory.Create(builder =>
                 {
                     options.IncludeScopes = false;
                     options.SingleLine = true;
-                });
+                })
+                .SetMinimumLevel(LogLevel.Debug);
         });
 ILogger logger = loggerFactory.CreateLogger<Program>();
 logger.LogInformation("DualBootBluetoothHelper - This tool imports and exports bluetooth configurations.");
@@ -24,7 +25,7 @@ RequireAdministratorHelper.RequireAdministrator();
 
 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 {
-    var windowsBluetooth = new WindowsBluetooth();
+    var windowsBluetooth = new WindowsBluetooth(loggerFactory);
 
     //var windowsBluetoothAdapters = await windowsBluetooth.ListBluetoothAdapters();
     //logger.LogInformation("Found the following Bluetooth adapters:");
@@ -42,6 +43,12 @@ if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
     {
         logger.LogInformation(adapter.ToString());
         foreach (var device in adapter.Devices)
+        {
             logger.LogInformation(device.ToString());
+            logger.LogDebug("LTK:" + device.LTK);
+            logger.LogDebug("IRK:" + device.IRK);
+            logger.LogDebug("ERand:" + device.Rand);
+            logger.LogDebug("EDIV:" + device.EDIV);
+        }
     }
 }

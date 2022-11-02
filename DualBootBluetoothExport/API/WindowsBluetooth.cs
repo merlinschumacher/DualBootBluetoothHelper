@@ -1,4 +1,7 @@
 ﻿using DualBootBluetoothHelper.Model;
+using Microsoft.Extensions.Logging;
+using Microsoft.Win32;
+using System.ComponentModel.DataAnnotations;
 using System.Text.RegularExpressions;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Enumeration;
@@ -7,13 +10,18 @@ namespace DualBootBluetoothHelper.API
 {
     public class WindowsBluetooth
     {
+
+        private ILogger _logger;
+
         private readonly string _bluetoothAdapterAQS = "System.Devices.InterfaceClassGuid:=\"{92383B0E-F90E-4AC9-8D44-8C2D0D0EBDA2}\"";
         private readonly string _bluetoothDeviceAQS = "System.Devices.DevObjectType:=5 AND System.Devices.Aep.ProtocolId:=\"{E0CBF06C-CD8B-4647-BB8A-263B43F0F974}\" AND (System.Devices.Aep.IsPaired:=System.StructuredQueryType.Boolean#True OR System.Devices.Aep.Bluetooth.IssueInquiry:=System.StructuredQueryType.Boolean#False)";
         private readonly string _bluetoothLEDeviceAQS = "System.Devices.DevObjectType:=5 AND System.Devices.Aep.ProtocolId:=\"{BB7BB05E-5972-42B5-94FC-76EAA7084D49}\" AND (System.Devices.Aep.IsPaired:=System.StructuredQueryType.Boolean#True OR System.Devices.Aep.Bluetooth.IssueInquiry:=System.StructuredQueryType.Boolean#False)";
-        private const string _bluetoothDeviceAddressRegex = @"Bluetooth(?:LE)?#Bluetooth(?:LE)?(.*)-(.*)";
+        private readonly string _bluetoothDeviceAddressRegex = @"Bluetooth(?:LE)?#Bluetooth(?:LE)?(.*)-(.*)";
+        private readonly string _bluetoothKeysRegistryKey = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Keys";
 
-        public WindowsBluetooth()
+        public WindowsBluetooth(ILoggerFactory loggerFactory)
         {
+            _logger = loggerFactory.CreateLogger("WindowsBluetooth");
         }
 
         public async Task<List<DBBHBluetoothAdapter>> ListBluetoothAdapters()
@@ -47,7 +55,12 @@ namespace DualBootBluetoothHelper.API
 
                 var bluetoothDeviceInstance = await BluetoothDevice.FromBluetoothAddressAsync(btAddress);
                 if (bluetoothDeviceInstance != null)
-                    bluetoothDevices.Add(new DBBHBluetoothDevice(bluetoothDeviceInfo.Name, bluetoothDeviceInstance.BluetoothAddress, btAdapterAddress));
+                {
+                    var btDevice = new DBBHBluetoothDevice(bluetoothDeviceInfo.Name, bluetoothDeviceInstance.BluetoothAddress, btAdapterAddress);
+                    btDevice = GetFivePointOneDeviceKeysFromRegistry(btDevice);
+                    bluetoothDevices.Add(btDevice);
+
+                }
             }
             foreach (var bluetoothLEDeviceInfo in bluetoothLEDevicesInfo)
             {
@@ -57,7 +70,11 @@ namespace DualBootBluetoothHelper.API
 
                 var bluetoothLEDeviceInstance = await BluetoothLEDevice.FromBluetoothAddressAsync(btAddress);
                 if (bluetoothLEDeviceInstance != null)
-                    bluetoothDevices.Add(new DBBHBluetoothDevice(bluetoothLEDeviceInfo.Name, bluetoothLEDeviceInstance.BluetoothAddress, btAdapterAddress));
+                {
+                    var btDevice = new DBBHBluetoothDevice(bluetoothLEDeviceInfo.Name, bluetoothLEDeviceInstance.BluetoothAddress, btAdapterAddress);
+                    btDevice = GetFivePointOneDeviceKeysFromRegistry(btDevice);
+                    bluetoothDevices.Add(btDevice);
+                }
             }
 
             return bluetoothDevices;
@@ -85,5 +102,45 @@ namespace DualBootBluetoothHelper.API
 
             return adapters;
         }
+
+        public DBBHBluetoothDevice GetFivePointOneDeviceKeysFromRegistry(DBBHBluetoothDevice device)
+        {
+            var regDeviceKey = _bluetoothKeysRegistryKey + "\\" + Convert.ToHexString(device.AdapterAddress) + "\\" + Convert.ToHexString(device.Address);
+            _logger.LogDebug("Reading registry key: " + regDeviceKey);
+            device.IRK = _convertToHex(Registry.GetValue(regDeviceKey, "IRK", null));
+            _logger.LogDebug("Got IRK: " + device.IRK);
+            device.LTK = _convertToHex(Registry.GetValue(regDeviceKey, "LTK", null));
+            _logger.LogDebug("Got LTK: " + device.LTK);
+            device.Rand = _reverseAndConvertToInt64(Registry.GetValue(regDeviceKey, "ERand", null));
+            _logger.LogDebug("Got Rand: " + device.Rand);
+            device.EDIV = _convertToHex(Registry.GetValue(regDeviceKey, "EDIV", null));
+            _logger.LogDebug("Got EDIV: " + device.EDIV);
+            return device;
+        }
+
+        private String _convertToHex(object? obj)
+        {
+            if (obj == null) return "";
+            if (obj.GetType() == typeof(byte[]))
+                return BitConverter.ToString((byte[])obj).Replace("-", string.Empty);
+            UInt64 intObj = Convert.ToUInt64(obj);
+            return intObj.ToString("X8");
+        }
+        private UInt64 _reverseAndConvertToInt64(object? obj)
+        {
+            if (obj == null) return 0;
+            UInt64 intObj = (UInt64)(Int64)obj;
+            UInt64 rev = _reverseBytes(intObj);
+            return rev;
+        }
+
+        private static UInt64 _reverseBytes(UInt64 value)
+        {
+            return (value & 0x00000000000000FFUL) << 56 | (value & 0x000000000000FF00UL) << 40 |
+                   (value & 0x0000000000FF0000UL) << 24 | (value & 0x00000000FF000000UL) << 8 |
+                   (value & 0x000000FF00000000UL) >> 8 | (value & 0x0000FF0000000000UL) >> 24 |
+                   (value & 0x00FF000000000000UL) >> 40 | (value & 0xFF00000000000000UL) >> 56;
+        }
+
     }
 }
