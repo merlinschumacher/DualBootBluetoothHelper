@@ -1,6 +1,5 @@
 ﻿// See https://aka.ms/new-console-template for more information
 
-
 using DualBootBluetoothHelper.API;
 using DualBootBluetoothHelper.Helper;
 using Microsoft.Extensions.Logging;
@@ -27,15 +26,22 @@ if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 {
     var windowsBluetooth = new WindowsBluetooth();
 
-    var windowsBluetoothAdapters = await windowsBluetooth.ListBluetoothAdapters();
-    logger.LogInformation("Found the following Bluetooth adapters:");
+    //var windowsBluetoothAdapters = await windowsBluetooth.ListBluetoothAdapters();
+    //logger.LogInformation("Found the following Bluetooth adapters:");
+    //foreach (var adapter in windowsBluetoothAdapters)
+    //    logger.LogInformation(adapter.ToString());
+
+    //var windowsBluetoothDevices = await windowsBluetooth.ListBluetoothDevices();
+    //logger.LogInformation("Found the following Bluetooth devices:");
+    //foreach (var device in windowsBluetoothDevices)
+    //    logger.LogInformation(device.ToString());
+
+    var windowsBluetoothAdapters = await windowsBluetooth.ListBluetoothDevicesByAdapter();
+    logger.LogInformation("Found the following Bluetooth adapters and devices:");
     foreach (var adapter in windowsBluetoothAdapters)
+    {
         logger.LogInformation(adapter.ToString());
-
-    var windowsBluetoothDevices = await windowsBluetooth.ListBluetoothDevices();
-    logger.LogInformation("Found the following Bluetooth devices:");
-    foreach (var device in windowsBluetoothDevices)
-        logger.LogInformation(device.ToString());
+        foreach (var device in adapter.Devices)
+            logger.LogInformation(device.ToString());
+    }
 }
-
-

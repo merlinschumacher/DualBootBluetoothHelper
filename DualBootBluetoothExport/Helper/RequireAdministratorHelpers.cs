@@ -7,6 +7,7 @@ namespace DualBootBluetoothHelper.Helper
     {
         [DllImport("libc")]
         public static extern uint getuid();
+
         public static void RequireAdministrator()
         {
             string name = System.AppDomain.CurrentDomain.FriendlyName;

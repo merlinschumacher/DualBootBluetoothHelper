@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.NetworkInformation;
-using System.Text;
-using System.Threading.Tasks;
+﻿using DualBootBluetoothHelper.Helper;
 
 namespace DualBootBluetoothHelper.Model
 {
@@ -12,12 +7,13 @@ namespace DualBootBluetoothHelper.Model
         public DBBHBluetoothAdapter(string name, byte[] address)
         {
             Name = name;
-            Address = address;
+            Address = AddressByteHelper.LeftPadAddress(address);
         }
+
         public DBBHBluetoothAdapter(string name, ulong address)
         {
             Name = name;
-            Address = BitConverter.GetBytes(address).Reverse().SkipWhile(x => x == 0).ToArray();
+            Address = AddressByteHelper.LeftPadAddress(BitConverter.GetBytes(address).Reverse().SkipWhile(x => x == 0).ToArray());
         }
 
         public string Name { get; set; } = "";
@@ -26,9 +22,7 @@ namespace DualBootBluetoothHelper.Model
 
         public override string ToString()
         {
-
             return Name + " - " + Convert.ToHexString(Address);
         }
-
     }
 }
