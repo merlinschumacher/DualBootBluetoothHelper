@@ -27,28 +27,23 @@ if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 {
     var windowsBluetooth = new WindowsBluetooth(loggerFactory);
 
-    //var windowsBluetoothAdapters = await windowsBluetooth.ListBluetoothAdapters();
-    //logger.LogInformation("Found the following Bluetooth adapters:");
-    //foreach (var adapter in windowsBluetoothAdapters)
-    //    logger.LogInformation(adapter.ToString());
-
-    //var windowsBluetoothDevices = await windowsBluetooth.ListBluetoothDevices();
-    //logger.LogInformation("Found the following Bluetooth devices:");
-    //foreach (var device in windowsBluetoothDevices)
-    //    logger.LogInformation(device.ToString());
-
     var windowsBluetoothAdapters = await windowsBluetooth.ListBluetoothDevicesByAdapter();
-    logger.LogInformation("Found the following Bluetooth adapters and devices:");
+    logger.LogInformation("Found the following {count} Bluetooth adapters and their devices:", windowsBluetoothAdapters.Count); 
     foreach (var adapter in windowsBluetoothAdapters)
     {
+        logger.LogInformation("====");
         logger.LogInformation(adapter.ToString());
         foreach (var device in adapter.Devices)
         {
+            logger.LogInformation("----");
             logger.LogInformation(device.ToString());
-            logger.LogDebug("LTK:" + device.LTK);
-            logger.LogDebug("IRK:" + device.IRK);
-            logger.LogDebug("ERand:" + device.Rand);
-            logger.LogDebug("EDIV:" + device.EDIV);
+            logger.LogDebug("LinkKey: {LinkKey}", device.LinkKey);
+            logger.LogDebug("LTK: {LTK}", device.LTK);
+            logger.LogDebug("IRK: {IRK}", device.IRK);
+            logger.LogDebug("Rand: {Rand}", device.Rand);
+            logger.LogDebug("EDIV: {EDIV}", device.EDIV);
         }
+        logger.LogInformation("----");
     }
+    logger.LogInformation("====");
 }

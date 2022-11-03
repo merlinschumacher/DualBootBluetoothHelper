@@ -29,7 +29,7 @@ namespace DualBootBluetoothHelper.Model
         public byte[] Address { get; set; }
         public byte[] AdapterAddress { get; set; }
         public DBBHBluetoothDeviceType DeviceType { get; set; }
-        public string Key { get; set; } = "";
+        public string LinkKey { get; set; } = "";
         public string IRK { get; set; } = "";
         public string LTK { get; set; } = "";
         public UInt64 Rand { get; set; }

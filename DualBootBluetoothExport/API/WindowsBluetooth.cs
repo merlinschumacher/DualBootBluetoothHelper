@@ -11,20 +11,49 @@ namespace DualBootBluetoothHelper.API
     public class WindowsBluetooth
     {
 
-        private ILogger _logger;
-
         private readonly string _bluetoothAdapterAQS = "System.Devices.InterfaceClassGuid:=\"{92383B0E-F90E-4AC9-8D44-8C2D0D0EBDA2}\"";
-        private readonly string _bluetoothDeviceAQS = "System.Devices.DevObjectType:=5 AND System.Devices.Aep.ProtocolId:=\"{E0CBF06C-CD8B-4647-BB8A-263B43F0F974}\" AND (System.Devices.Aep.IsPaired:=System.StructuredQueryType.Boolean#True OR System.Devices.Aep.Bluetooth.IssueInquiry:=System.StructuredQueryType.Boolean#False)";
-        private readonly string _bluetoothLEDeviceAQS = "System.Devices.DevObjectType:=5 AND System.Devices.Aep.ProtocolId:=\"{BB7BB05E-5972-42B5-94FC-76EAA7084D49}\" AND (System.Devices.Aep.IsPaired:=System.StructuredQueryType.Boolean#True OR System.Devices.Aep.Bluetooth.IssueInquiry:=System.StructuredQueryType.Boolean#False)";
         private readonly string _bluetoothDeviceAddressRegex = @"Bluetooth(?:LE)?#Bluetooth(?:LE)?(.*)-(.*)";
-        private readonly string _bluetoothKeysRegistryKey = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Keys";
-
+        private readonly string _bluetoothDeviceAQS = "System.Devices.DevObjectType:=5 AND System.Devices.Aep.ProtocolId:=\"{E0CBF06C-CD8B-4647-BB8A-263B43F0F974}\" AND (System.Devices.Aep.IsPaired:=System.StructuredQueryType.Boolean#True OR System.Devices.Aep.Bluetooth.IssueInquiry:=System.StructuredQueryType.Boolean#False)";
+        private readonly string _bluetoothKeysRegistryKey = @"SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Keys";
+        private readonly string _bluetoothLEDeviceAQS = "System.Devices.DevObjectType:=5 AND System.Devices.Aep.ProtocolId:=\"{BB7BB05E-5972-42B5-94FC-76EAA7084D49}\" AND (System.Devices.Aep.IsPaired:=System.StructuredQueryType.Boolean#True OR System.Devices.Aep.Bluetooth.IssueInquiry:=System.StructuredQueryType.Boolean#False)";
+        private readonly ILogger _logger;
         public WindowsBluetooth(ILoggerFactory loggerFactory)
         {
             _logger = loggerFactory.CreateLogger("WindowsBluetooth");
         }
 
-        public async Task<List<DBBHBluetoothAdapter>> ListBluetoothAdapters()
+        private DBBHBluetoothDevice GetClassicDeviceKeysFromRegistry(DBBHBluetoothDevice device)
+        {
+            var regAdapterKey = Registry.LocalMachine.OpenSubKey(_bluetoothKeysRegistryKey + "\\" + ConvertToHex(device.AdapterAddress));
+            if (regAdapterKey == null)
+                return device;
+            _logger.LogDebug("Reading registry key: {key}", regAdapterKey);
+            var deviceSubKey = ConvertToHex(device.Address);
+            device.LinkKey = ConvertToHex(regAdapterKey.GetValue(deviceSubKey));
+            _logger.LogDebug("Got LinkKey: {LinkKey}", device.LinkKey);
+            return device;
+        }
+
+        private DBBHBluetoothDevice GetFivePointOneDeviceKeysFromRegistry(DBBHBluetoothDevice device)
+        {
+            var deviceSubKey = ConvertToHex(device.Address);
+            var adapterSubKey = ConvertToHex(device.AdapterAddress);
+            var deviceKey = Registry.LocalMachine.OpenSubKey(_bluetoothKeysRegistryKey + "\\" + adapterSubKey + "\\" + deviceSubKey);
+            if (deviceKey == null)
+                return device;
+            _logger.LogDebug("Reading registry key: {key}", deviceKey);
+            device.IRK = ConvertToHex(deviceKey.GetValue("IRK", null));
+            _logger.LogDebug("Got IRK: {IRK}", device.IRK);
+            device.LTK = ConvertToHex(deviceKey.GetValue("LTK", null));
+            _logger.LogDebug("Got LTK: {LTK}",device.LTK);
+            device.Rand = ReverseAndConvertToInt64(deviceKey.GetValue("ERand", null));
+            _logger.LogDebug("Got Rand: {Rand}", device.Rand);
+            device.EDIV = ConvertToHex(deviceKey.GetValue("EDIV", null));
+            _logger.LogDebug("Got EDIV: {EDIV}", device.EDIV);
+            return device;
+        }
+
+        private async Task<List<DBBHBluetoothAdapter>> ListBluetoothAdaptersFromDeviceManager()
         {
             DeviceInformationCollection bluetoothAdaptersDeviceInfo = await DeviceInformation.FindAllAsync(_bluetoothAdapterAQS);
 
@@ -39,7 +68,51 @@ namespace DualBootBluetoothHelper.API
             return bluetoothAdapters;
         }
 
-        public async Task<List<DBBHBluetoothDevice>> ListBluetoothDevices()
+        private List<DBBHBluetoothAdapter> ListBluetoothAdaptersFromRegistry()
+        {
+            var bluetoothAdapterRegistryKeys = Registry.LocalMachine.OpenSubKey(_bluetoothKeysRegistryKey)?.GetSubKeyNames() ?? Array.Empty<string>();
+
+            var bluetoothAdapters = new List<DBBHBluetoothAdapter>();
+
+            foreach (var bluetoothAdapterRegistryKey in bluetoothAdapterRegistryKeys)
+            {
+                bluetoothAdapters.Add(new DBBHBluetoothAdapter($"Unknown adapter({bluetoothAdapterRegistryKey.ToUpper()})", BtAddressStringToUlong(bluetoothAdapterRegistryKey)));
+            }
+
+            return bluetoothAdapters;
+        }
+
+        public async Task<List<DBBHBluetoothAdapter>> ListBluetoothDevicesByAdapter()
+        {
+            var adaptersDeviceManager = await ListBluetoothAdaptersFromDeviceManager();
+            var adaptersRegistry = ListBluetoothAdaptersFromRegistry();
+            var adapters = adaptersDeviceManager.UnionBy(adaptersRegistry, a => ConvertToHex(a.Address)).ToList();
+            var devices = await ListBluetoothDevicesFromDeviceManager();
+
+            devices = devices.OrderBy(o => o.Name).ToList();
+
+            foreach (var adapter in adapters)
+            {
+                var devicesRegistry = ListBluetoothDevicesFromRegistryByAdapter(ConvertToHex(adapter.Address));
+                adapter.Devices = devices.FindAll(x => x.AdapterAddress.SequenceEqual(adapter.Address));
+                adapter.Devices = adapter.Devices.DistinctBy(d => ConvertToHex(d.Address)).ToList();
+                for (int i = 0; i < adapter.Devices.Count; i++)
+                {
+                    adapter.Devices[i] = GetClassicDeviceKeysFromRegistry(adapter.Devices[i]);
+                    adapter.Devices[i] = GetFivePointOneDeviceKeysFromRegistry(adapter.Devices[i]);
+                }
+                devices = devices.Except(adapter.Devices).ToList();
+            }
+
+            adapters.RemoveAll(a => a.Devices.Count == 0);
+
+            if (devices.Count > 0)
+                adapters.Add(new DBBHBluetoothAdapter("Devices that can't be matched to any adapter:", 0) { Devices = devices });
+
+            return adapters;
+        }
+
+        public async Task<List<DBBHBluetoothDevice>> ListBluetoothDevicesFromDeviceManager()
         {
             List<DBBHBluetoothDevice> bluetoothDevices = new();
             DeviceInformationCollection bluetoothDevicesInfo = await
@@ -50,14 +123,13 @@ namespace DualBootBluetoothHelper.API
             foreach (var bluetoothDeviceInfo in bluetoothDevicesInfo)
             {
                 var matches = Regex.Match(bluetoothDeviceInfo.Id, _bluetoothDeviceAddressRegex);
-                var btAddress = _btAddressStringToUlong(matches.Groups[2].Value);
-                var btAdapterAddress = _btAddressStringToUlong(matches.Groups[1].Value);
+                var btAddress = BtAddressStringToUlong(matches.Groups[2].Value);
+                var btAdapterAddress = BtAddressStringToUlong(matches.Groups[1].Value);
 
                 var bluetoothDeviceInstance = await BluetoothDevice.FromBluetoothAddressAsync(btAddress);
                 if (bluetoothDeviceInstance != null)
                 {
                     var btDevice = new DBBHBluetoothDevice(bluetoothDeviceInfo.Name, bluetoothDeviceInstance.BluetoothAddress, btAdapterAddress);
-                    btDevice = GetFivePointOneDeviceKeysFromRegistry(btDevice);
                     bluetoothDevices.Add(btDevice);
 
                 }
@@ -65,14 +137,13 @@ namespace DualBootBluetoothHelper.API
             foreach (var bluetoothLEDeviceInfo in bluetoothLEDevicesInfo)
             {
                 var matches = Regex.Match(bluetoothLEDeviceInfo.Id, _bluetoothDeviceAddressRegex);
-                var btAddress = _btAddressStringToUlong(matches.Groups[2].Value);
-                var btAdapterAddress = _btAddressStringToUlong(matches.Groups[1].Value);
+                var btAddress = BtAddressStringToUlong(matches.Groups[2].Value);
+                var btAdapterAddress = BtAddressStringToUlong(matches.Groups[1].Value);
 
                 var bluetoothLEDeviceInstance = await BluetoothLEDevice.FromBluetoothAddressAsync(btAddress);
                 if (bluetoothLEDeviceInstance != null)
                 {
                     var btDevice = new DBBHBluetoothDevice(bluetoothLEDeviceInfo.Name, bluetoothLEDeviceInstance.BluetoothAddress, btAdapterAddress);
-                    btDevice = GetFivePointOneDeviceKeysFromRegistry(btDevice);
                     bluetoothDevices.Add(btDevice);
                 }
             }
@@ -80,61 +151,42 @@ namespace DualBootBluetoothHelper.API
             return bluetoothDevices;
         }
 
-        private ulong _btAddressStringToUlong(string address)
+        public List<DBBHBluetoothDevice> ListBluetoothDevicesFromRegistryByAdapter(string btAdapterAddress)
         {
-            address = address.Replace(":", "");
-            return Convert.ToUInt64(address, 16);
-        }
+            var bluetoothDevicesRegistryKeys = Registry.LocalMachine.OpenSubKey(_bluetoothKeysRegistryKey + "\\" + btAdapterAddress)?.GetSubKeyNames() ?? Array.Empty<string>();
+            var bluetoothDevicesRegistryValues = Registry.LocalMachine.OpenSubKey(_bluetoothKeysRegistryKey + "\\" + btAdapterAddress)?.GetValueNames() ?? Array.Empty<string>();
 
-        public async Task<List<DBBHBluetoothAdapter>> ListBluetoothDevicesByAdapter()
-        {
-            var adapters = await ListBluetoothAdapters();
-            var devices = await ListBluetoothDevices();
-            devices = devices.OrderBy(o => o.Name).ToList();
+            var btDevices = new List<DBBHBluetoothDevice>();
 
-            foreach (var adapter in adapters)
+            foreach (var key in bluetoothDevicesRegistryKeys)
             {
-                adapter.Devices = devices.FindAll(x => x.AdapterAddress.SequenceEqual(adapter.Address));
-                devices = devices.Except(adapter.Devices).ToList();
+                _logger.LogDebug("Adding device from key: {key}", key);
+                btDevices.Add(new DBBHBluetoothDevice($"Unknown device({key.ToUpperInvariant()})", BtAddressStringToUlong(key), BtAddressStringToUlong(btAdapterAddress)));
+            }
+            foreach (var value in bluetoothDevicesRegistryValues)
+            {
+                _logger.LogDebug("Found value: {value}",value);
+                var btDevice = btDevices.Find(b => ConvertToHex(b.Address).ToUpperInvariant() == value.ToUpperInvariant());
+                try
+                {
+                    var btDeviceAddress = BtAddressStringToUlong(value);
+                }
+                catch
+                {
+                    _logger.LogDebug("Could not convert value: {value}",value);
+                    continue;
+                }
+                if (btDevice == null)
+                {
+                    _logger.LogDebug("Adding device from value: {value}",value);
+                    btDevices.Add(new DBBHBluetoothDevice($"Unknown device({value.ToUpperInvariant()})", BtAddressStringToUlong(value), BtAddressStringToUlong(btAdapterAddress)));
+                }
             }
 
-            adapters.Add(new DBBHBluetoothAdapter("Unknown adapter", 0) { Devices = devices });
-
-            return adapters;
+            return btDevices;
         }
 
-        public DBBHBluetoothDevice GetFivePointOneDeviceKeysFromRegistry(DBBHBluetoothDevice device)
-        {
-            var regDeviceKey = _bluetoothKeysRegistryKey + "\\" + Convert.ToHexString(device.AdapterAddress) + "\\" + Convert.ToHexString(device.Address);
-            _logger.LogDebug("Reading registry key: " + regDeviceKey);
-            device.IRK = _convertToHex(Registry.GetValue(regDeviceKey, "IRK", null));
-            _logger.LogDebug("Got IRK: " + device.IRK);
-            device.LTK = _convertToHex(Registry.GetValue(regDeviceKey, "LTK", null));
-            _logger.LogDebug("Got LTK: " + device.LTK);
-            device.Rand = _reverseAndConvertToInt64(Registry.GetValue(regDeviceKey, "ERand", null));
-            _logger.LogDebug("Got Rand: " + device.Rand);
-            device.EDIV = _convertToHex(Registry.GetValue(regDeviceKey, "EDIV", null));
-            _logger.LogDebug("Got EDIV: " + device.EDIV);
-            return device;
-        }
-
-        private String _convertToHex(object? obj)
-        {
-            if (obj == null) return "";
-            if (obj.GetType() == typeof(byte[]))
-                return BitConverter.ToString((byte[])obj).Replace("-", string.Empty);
-            UInt64 intObj = Convert.ToUInt64(obj);
-            return intObj.ToString("X8");
-        }
-        private UInt64 _reverseAndConvertToInt64(object? obj)
-        {
-            if (obj == null) return 0;
-            UInt64 intObj = (UInt64)(Int64)obj;
-            UInt64 rev = _reverseBytes(intObj);
-            return rev;
-        }
-
-        private static UInt64 _reverseBytes(UInt64 value)
+        private static UInt64 ReverseBytes(UInt64 value)
         {
             return (value & 0x00000000000000FFUL) << 56 | (value & 0x000000000000FF00UL) << 40 |
                    (value & 0x0000000000FF0000UL) << 24 | (value & 0x00000000FF000000UL) << 8 |
@@ -142,5 +194,25 @@ namespace DualBootBluetoothHelper.API
                    (value & 0x00FF000000000000UL) >> 40 | (value & 0xFF00000000000000UL) >> 56;
         }
 
+        private static ulong BtAddressStringToUlong(string address)
+        {
+            address = address.Replace(":", "");
+            return Convert.ToUInt64(address, 16);
+        }
+        private static String ConvertToHex(object? obj)
+        {
+            if (obj == null) return "";
+            if (obj.GetType() == typeof(byte[]))
+                return BitConverter.ToString((byte[])obj).Replace("-", string.Empty).ToUpperInvariant();
+            UInt64 intObj = Convert.ToUInt64(obj);
+            return intObj.ToString("X8").ToUpperInvariant();
+        }
+        private static UInt64 ReverseAndConvertToInt64(object? obj)
+        {
+            if (obj == null) return 0;
+            UInt64 intObj = (UInt64)(Int64)obj;
+            UInt64 rev = ReverseBytes(intObj);
+            return rev;
+        }
     }
 }
