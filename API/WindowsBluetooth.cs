@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using System.ComponentModel.DataAnnotations;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Enumeration;
@@ -19,6 +20,12 @@ namespace DualBootBluetoothHelper.API
         private readonly ILogger _logger;
         public WindowsBluetooth(ILoggerFactory loggerFactory)
         {
+            bool isWindows = System.Runtime.InteropServices.RuntimeInformation
+                                               .IsOSPlatform(OSPlatform.Windows);
+            if (!isWindows)
+            {
+                throw new InvalidOperationException("This is not a Windows OS. You can't call this API from another OS.");
+            }
             _logger = loggerFactory.CreateLogger("WindowsBluetooth");
         }
 
