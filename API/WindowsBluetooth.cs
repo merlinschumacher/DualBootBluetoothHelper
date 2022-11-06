@@ -24,21 +24,18 @@ namespace DualBootBluetoothHelper.API
 
         private DBBHBluetoothDevice GetClassicDeviceKeysFromRegistry(DBBHBluetoothDevice device)
         {
-            var regAdapterKey = Registry.LocalMachine.OpenSubKey(_bluetoothKeysRegistryKey + "\\" + ConvertToHex(device.AdapterAddress));
+            var regAdapterKey = Registry.LocalMachine.OpenSubKey(_bluetoothKeysRegistryKey + "\\" + device.AdapterAddress);
             if (regAdapterKey == null)
                 return device;
             _logger.LogDebug("Reading registry key: {key}", regAdapterKey);
-            var deviceSubKey = ConvertToHex(device.Address);
-            device.LinkKey = ConvertToHex(regAdapterKey.GetValue(deviceSubKey));
+            device.LinkKey = ConvertToHex(regAdapterKey.GetValue(device.Address,null));
             _logger.LogDebug("Got LinkKey: {LinkKey}", device.LinkKey);
             return device;
         }
 
         private DBBHBluetoothDevice GetFivePointOneDeviceKeysFromRegistry(DBBHBluetoothDevice device)
         {
-            var deviceSubKey = ConvertToHex(device.Address);
-            var adapterSubKey = ConvertToHex(device.AdapterAddress);
-            var deviceKey = Registry.LocalMachine.OpenSubKey(_bluetoothKeysRegistryKey + "\\" + adapterSubKey + "\\" + deviceSubKey);
+            var deviceKey = Registry.LocalMachine.OpenSubKey(_bluetoothKeysRegistryKey + "\\" + device.AdapterAddress+ "\\" + device.Address);
             if (deviceKey == null)
                 return device;
             _logger.LogDebug("Reading registry key: {key}", deviceKey);
@@ -86,16 +83,16 @@ namespace DualBootBluetoothHelper.API
         {
             var adaptersDeviceManager = await ListBluetoothAdaptersFromDeviceManager();
             var adaptersRegistry = ListBluetoothAdaptersFromRegistry();
-            var adapters = adaptersDeviceManager.UnionBy(adaptersRegistry, a => ConvertToHex(a.Address)).ToList();
+            var adapters = adaptersDeviceManager.UnionBy(adaptersRegistry, a => a.Address).ToList();
             var devices = await ListBluetoothDevicesFromDeviceManager();
 
             devices = devices.OrderBy(o => o.Name).ToList();
 
             foreach (var adapter in adapters)
             {
-                var devicesRegistry = ListBluetoothDevicesFromRegistryByAdapter(ConvertToHex(adapter.Address));
-                adapter.Devices = devices.FindAll(x => x.AdapterAddress.SequenceEqual(adapter.Address));
-                adapter.Devices = adapter.Devices.DistinctBy(d => ConvertToHex(d.Address)).ToList();
+                var devicesRegistry = ListBluetoothDevicesFromRegistryByAdapter(adapter.Address);
+                adapter.Devices = devices.FindAll(x => x.AdapterAddress == adapter.Address);
+                adapter.Devices = adapter.Devices.DistinctBy(d => d.Address).ToList();
                 for (int i = 0; i < adapter.Devices.Count; i++)
                 {
                     adapter.Devices[i] = GetClassicDeviceKeysFromRegistry(adapter.Devices[i]);
@@ -161,12 +158,12 @@ namespace DualBootBluetoothHelper.API
             foreach (var key in bluetoothDevicesRegistryKeys)
             {
                 _logger.LogDebug("Adding device from key: {key}", key);
-                btDevices.Add(new DBBHBluetoothDevice($"Unknown device({key.ToUpperInvariant()})", BtAddressStringToUlong(key), BtAddressStringToUlong(btAdapterAddress)));
+                btDevices.Add(new DBBHBluetoothDevice($"Unknown device({key.ToUpperInvariant()})", key, btAdapterAddress));
             }
             foreach (var value in bluetoothDevicesRegistryValues)
             {
                 _logger.LogDebug("Found value: {value}",value);
-                var btDevice = btDevices.Find(b => ConvertToHex(b.Address).ToUpperInvariant() == value.ToUpperInvariant());
+                var btDevice = btDevices.Find(b => b.Address.ToUpperInvariant() == value.ToUpperInvariant());
                 try
                 {
                     var btDeviceAddress = BtAddressStringToUlong(value);
@@ -207,9 +204,9 @@ namespace DualBootBluetoothHelper.API
             UInt64 intObj = Convert.ToUInt64(obj);
             return intObj.ToString("X8").ToUpperInvariant();
         }
-        private static UInt64 ReverseAndConvertToInt64(object? obj)
+        private static UInt64? ReverseAndConvertToInt64(object? obj)
         {
-            if (obj == null) return 0;
+            if (obj == null) return null;
             UInt64 intObj = (UInt64)(Int64)obj;
             UInt64 rev = ReverseBytes(intObj);
             return rev;
