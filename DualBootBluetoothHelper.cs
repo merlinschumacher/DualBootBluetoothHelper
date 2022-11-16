@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 
+var jsonOutputFile = "bt-out.json";
+
 using var loggerFactory = LoggerFactory.Create(builder =>
         {
             builder
@@ -21,8 +23,10 @@ using var loggerFactory = LoggerFactory.Create(builder =>
 ;
         });
 ILogger logger = loggerFactory.CreateLogger<Program>();
-logger.LogInformation("DualBootBluetoothHelper - This tool imports and exports bluetooth configurations.");
+logger.LogInformation("DualBootBluetoothHelper - This tool exports bluetooth configurations.");
+logger.LogInformation("Pass a file name as the first argument to define an output file for the Bluetooth information.");
 
+// Check if we have administrative rights.
 try
 {
     RequireAdministratorHelper.RequireAdministrator();
@@ -31,10 +35,19 @@ catch (Exception ex)
 {
     if (ex is InvalidOperationException)
     {
-        logger.LogError("DualBootBluetoothHelper needs administrative/root priviledges to run! On Windows systems it needs to be run with psexec -s to work.");
+        logger.LogError("DualBootBluetoothHelper needs administrative/root priviledges to run! On Windows systems it needs to be run with 'psexec.exe -s' to get System access to work.");
+        System.Environment.Exit(1);
     }
 }
 
+
+// Set the output file to the first argument, if the argument ist given.
+if (args.Length > 0 && !String.IsNullOrEmpty(args[0]))
+{
+    jsonOutputFile = args[0];
+}
+
+// Retrieve all Windows Bluetooth adapters and devices.
 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 {
     var windowsBluetooth = new WindowsBluetooth(loggerFactory);
@@ -57,8 +70,8 @@ if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
     }
     logger.LogInformation("====");
 
-    logger.LogInformation("dumping to bt.json");
+    logger.LogInformation("dumping to {outputFile}", jsonOutputFile);
     var json = JsonSerializer.Serialize(windowsBluetoothAdapters, new JsonSerializerOptions { WriteIndented = true });
     logger.LogDebug("{json}", json);
-    await File.WriteAllTextAsync("bt.json", json);
+    await File.WriteAllTextAsync(jsonOutputFile, json);
 }

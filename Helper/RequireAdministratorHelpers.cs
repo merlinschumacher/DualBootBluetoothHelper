@@ -3,6 +3,7 @@ using System.Security.Principal;
 
 namespace DualBootBluetoothHelper.Helper
 {
+    /// <summary>Checks if the current user has administrative priviledges</summary>
     internal static class RequireAdministratorHelper
     {
         [DllImport("libc")]
@@ -11,27 +12,20 @@ namespace DualBootBluetoothHelper.Helper
         public static void RequireAdministrator()
         {
             string name = System.AppDomain.CurrentDomain.FriendlyName;
-            try
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
                 {
-                    using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
+                    WindowsPrincipal principal = new WindowsPrincipal(identity);
+                    if (!principal.IsInRole(WindowsBuiltInRole.Administrator) || !identity.IsSystem)
                     {
-                        WindowsPrincipal principal = new WindowsPrincipal(identity);
-                        if (!principal.IsInRole(WindowsBuiltInRole.Administrator))
-                        {
-                            throw new InvalidOperationException($"Application must be run as administrator. Right click the {name} file and select 'run as administrator'.");
-                        }
+                        throw new InvalidOperationException($"Application must be run as administrator. Right click the {name} file and select 'run as administrator'.");
                     }
                 }
-                else if (getuid() != 0)
-                {
-                    throw new InvalidOperationException($"Application must be run as root/sudo. From terminal, run the executable as 'sudo {name}'");
-                }
             }
-            catch (Exception ex)
+            else if (getuid() != 0)
             {
-                throw new ApplicationException("Unable to determine administrator or root status", ex);
+                throw new InvalidOperationException($"Application must be run as root/sudo. From terminal, run the executable as 'sudo {name}'");
             }
         }
     }
