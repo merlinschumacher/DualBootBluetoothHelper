@@ -16,10 +16,9 @@ using var loggerFactory = LoggerFactory.Create(builder =>
                     options.SingleLine = true;
                 })
 #if DEBUG
-                .SetMinimumLevel(LogLevel.Debug);
-#else
-;
+                .SetMinimumLevel(LogLevel.Debug)
 #endif
+;
         });
 ILogger logger = loggerFactory.CreateLogger<Program>();
 logger.LogInformation("DualBootBluetoothHelper - This tool imports and exports bluetooth configurations.");
@@ -27,7 +26,8 @@ logger.LogInformation("DualBootBluetoothHelper - This tool imports and exports b
 try
 {
     RequireAdministratorHelper.RequireAdministrator();
-} catch (Exception ex)
+}
+catch (Exception ex)
 {
     if (ex is InvalidOperationException)
     {
@@ -44,10 +44,10 @@ if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
     foreach (var adapter in windowsBluetoothAdapters)
     {
         logger.LogInformation("====");
-        logger.LogInformation("{adapter}",adapter.ToString());
+        logger.LogInformation("{adapter}", adapter.ToString());
         foreach (var device in adapter.Devices)
         {
-            logger.LogInformation("{device}",device.ToString());
+            logger.LogInformation("{device}", device.ToString());
             logger.LogDebug("LinkKey: {LinkKey}", device.LinkKey);
             logger.LogDebug("LTK: {LTK}", device.LTK);
             logger.LogDebug("IRK: {IRK}", device.IRK);
@@ -59,7 +59,6 @@ if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 
     logger.LogInformation("dumping to bt.json");
     var json = JsonSerializer.Serialize(windowsBluetoothAdapters, new JsonSerializerOptions { WriteIndented = true });
-    logger.LogDebug("{json}",json);
+    logger.LogDebug("{json}", json);
     await File.WriteAllTextAsync("bt.json", json);
-
 }
