@@ -1,7 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 using System.Security.Principal;
 
-namespace DualBootBluetoothHelper.Helper
+namespace DualBootBluetoothHelper.Helpers
 {
     /// <summary>Checks if the current user has administrative priviledges</summary>
     internal static class RequireAdministratorHelper

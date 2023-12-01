@@ -1,6 +1,6 @@
-﻿using DualBootBluetoothHelper.Helper;
+﻿using DualBootBluetoothHelper.Helpers;
 
-namespace DualBootBluetoothHelper.Model
+namespace DualBootBluetoothHelper.Models
 {
     /// <summary>A Bluetooth adapter</summary>
     public class DbbhBluetoothAdapter
@@ -20,7 +20,7 @@ namespace DualBootBluetoothHelper.Model
         public DbbhBluetoothAdapter(string name, ulong address)
         {
             Name = name;
-            Address = AddressByteHelper.ulongToString(address);
+            Address = BtConversionHelper.ULongToString(address);
         }
 
         /// <summary>The user friendly name of the adapter.</summary>
